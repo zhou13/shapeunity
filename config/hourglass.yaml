@@ -1,0 +1,24 @@
+name: hg
+
+io:
+  logdir: logs/
+  datadir: data/SU3/
+  resume_from:
+  num_workers: 4
+  tensorboard_port: 0
+  checkpoint_interval: 5
+  validation_interval: 12000
+
+model:
+  name: stacked_hourglass
+  batch_size: 6
+  depth: 6
+  num_stacks: 4
+  num_blocks: 1
+
+optim:
+  name: Adam
+  lr: 1.0e-4
+  amsgrad: True
+  weight_decay: 0
+  max_iteration: 500000
