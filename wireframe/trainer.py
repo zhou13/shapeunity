@@ -1,18 +1,17 @@
 import os
-import os.path as osp
 import shutil
+import os.path as osp
 import threading
 from timeit import default_timer as timer
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
 import torch.nn.functional as F
 from skimage import io
+from tensorboardX import SummaryWriter
 
 import wireframe.utils as utils
-
-plt.rcParams["figure.figsize"] = (24, 24)
 
 
 def tprint(*args):
@@ -46,6 +45,7 @@ class Trainer(object):
         batch_size,
         checkpoint_interval,
         validation_interval,
+        tb_port,
     ):
         self.device = device
 
@@ -62,6 +62,15 @@ class Trainer(object):
         self.out = out
         if not osp.exists(self.out):
             os.makedirs(self.out)
+
+        board_out = osp.join(self.out, "tensorboard")
+        if not osp.exists(board_out):
+            os.makedirs(board_out)
+        self.writer = SummaryWriter(board_out)
+        t = threading.Thread(
+            target=_launch_tensorboard, args=([board_out, tb_port, out])
+        )
+        t.start()
 
         self.epoch = 0
         self.iteration = 0
@@ -202,6 +211,10 @@ class Trainer(object):
 
     def _write_metrics(self, size, total_loss, prefix, do_print=False):
         for i, metrics in enumerate(self.metrics):
+            for label, metric in zip(self.loss_labels, metrics):
+                self.writer.add_scalar(
+                    f"{prefix}/{i}/{label}", metric / size, self.iteration
+                )
             if i == 0 and do_print:
                 csv_str = (
                     f"{self.epoch:03}/{self.iteration * self.batch_size:07},"
@@ -214,11 +227,14 @@ class Trainer(object):
                 with open(f"{self.out}/loss.csv", "a") as fout:
                     print(csv_str, file=fout)
                 pprint(prt_str, " " * 7)
+        self.writer.add_scalar(
+            f"{prefix}/total_loss", total_loss / size, self.iteration
+        )
         return total_loss
 
     def _plot_samples(self, i, index, result, target, prefix):
         plt.close()
-        plt.imshow(io.imread(self.val_loader.dataset.filelist[index] + ".png"))
+        plt.imshow(io.imread(self.val_loader.dataset.filelist[index][:-10] + ".png"))
         plt.savefig(f"{prefix}_img.jpg"), plt.close()
 
         mask_result = result["jmap"][i].cpu()
@@ -250,7 +266,39 @@ class Trainer(object):
         plt.imshow(depth_target), plt.savefig(f"{prefix}_depth_a.jpg"), plt.close()
         plt.imshow(depth_result), plt.savefig(f"{prefix}_depth_b.jpg"), plt.close()
 
+        xmap_result = result["xmap"][i].cpu()
+        xmap_target = target["Lmap"][i][0].cpu()
+        plt.imshow(xmap_target), plt.savefig(f"{prefix}_xmap_a.jpg"), plt.close()
+        plt.imshow(xmap_result), plt.savefig(f"{prefix}_xmap_b.jpg"), plt.close()
+
+        ymap_result = result["ymap"][i].cpu()
+        ymap_target = target["Lmap"][i][1].cpu()
+        plt.imshow(ymap_target), plt.savefig(f"{prefix}_ymap_a.jpg"), plt.close()
+        plt.imshow(ymap_result), plt.savefig(f"{prefix}_ymap_b.jpg"), plt.close()
+
+        zmap_result = result["zmap"][i].cpu()
+        zmap_target = target["Lmap"][i][2].cpu()
+        plt.imshow(zmap_target), plt.savefig(f"{prefix}_zmap_a.jpg"), plt.close()
+        plt.imshow(zmap_result), plt.savefig(f"{prefix}_zmap_b.jpg"), plt.close()
+
+        vpts_target = target["vpts"][i].cpu()
+        plt.imshow(io.imread(self.val_loader.dataset.filelist[index][:-10] + ".png"))
+        for vp in vpts_target:
+            vp = vp / vp.norm()
+            vp_ = np.c_[256 * (1 + vp[0] / vp[2]), 256 * (1 - vp[1] / vp[2])] - 0.5
+            plt.scatter(vp_[0][0], vp_[0][1])
+        plt.savefig(f"{prefix}_vpts_a.jpg"), plt.close()
+
+        vpts_result = result["vpts"][i].cpu()
+        plt.imshow(io.imread(self.val_loader.dataset.filelist[index][:-10] + ".png"))
+        for vp in vpts_result:
+            vp = vp / vp.norm()
+            vp_ = np.c_[256 * (1 + vp[0] / vp[2]), 256 * (1 - vp[1] / vp[2])] - 0.5
+            plt.scatter(vp_[0][0], vp_[0][1])
+        plt.savefig(f"{prefix}_vpts_b.jpg"), plt.close()
+
     def train(self):
+        plt.rcParams["figure.figsize"] = (24, 24)
         # if self.iteration == 0:
         #     self.validate()
         epoch_size = len(self.train_loader)

@@ -1,6 +1,6 @@
 import math
 from itertools import combinations
-from collections import namedtuple, defaultdict
+from collections import defaultdict
 
 import cvxpy as cvx
 import numpy as np
@@ -13,17 +13,6 @@ MAX_ANGLE = PI2 / 8 / 10
 cmap = plt.get_cmap("brg")
 
 
-def vp_from_lines(x1, y1, x2, y2):
-    x, y = cvx.Variable(), cvx.Variable()
-    assert len(x1) == len(x2) == len(y1) == len(y2)
-    objective = cvx.sum(
-        cvx.abs(cvx.multiply(x2 - x1, y1 - y) - cvx.multiply(y2 - y1, x1 - x))
-    )
-    problem = cvx.Problem(cvx.Minimize(objective), [])
-    problem.solve()
-    return x.value, y.value
-
-
 def estimate_intrinsic_from_depth(vertices, line):
     edges = defaultdict(list)
     for v0, v1 in line:
@@ -34,7 +23,7 @@ def estimate_intrinsic_from_depth(vertices, line):
             del edges[v]
 
     def objective(x):
-        inv2f = np.array([x[0], x[1], 1])
+        inv2f = np.array([x[0], x[0], 1])
         o = 0
         for v0 in edges:
             for v1, v2 in combinations(edges[v0], 2):
@@ -43,12 +32,10 @@ def estimate_intrinsic_from_depth(vertices, line):
                 o += abs((inv2f * dv1) @ dv2)
         return o
 
-    inv2f = scipy.optimize.minimize(
-        objective, np.array([1, 1]), options={"disp": True}
-    ).x
+    inv2f = scipy.optimize.minimize(objective, np.array([1]), options={"disp": True}).x
     assert (inv2f > 0).all()
     f = (1 / inv2f) ** 0.5
-    return np.array([[f[0], 0, 0], [0, f[1], 0], [0, 0, 1]])
+    return np.array([[f[0], 0, 0], [0, f[0], 0], [0, 0, 1]])
 
 
 def estimate_intrinsic_from_vp(vp1, vp2, vp3):
@@ -62,35 +49,22 @@ def estimate_intrinsic_from_vp(vp1, vp2, vp3):
 
     inv2f = scipy.optimize.minimize(objective, np.array([1]), method="COBYLA").x
     if inv2f[0] < 0:
-        return np.array([[0, 0, 0], [0, 0, 0], [0, 0, 1]]), objective(inv2f)
+        return None, objective(inv2f)
     f = (1 / inv2f) ** 0.5
     return np.array([[f[0], 0, 0], [0, f[0], 0], [0, 0, 1]]), objective(inv2f)
 
 
-def estimate_3intrinsic_from_vp(vp1, vp2, vp3):
-    def objective(x):
-        S = np.array([[1, 0, -x[0]], [0, 1, -x[1]], [-x[0], -x[1], x[2]]])
-        o = (vp1 @ S @ vp2) ** 2 + (vp2 @ S @ vp3) ** 2 + (vp3 @ S @ vp1) ** 2
-        return o
-
-    S = scipy.optimize.minimize(objective, np.array([1, 1, 1]), method="COBYLA").x
-    ox, oy = S[0], S[1]
-    assert S[2] - ox ** 2 - oy ** 2 > 0
-    f = math.sqrt(S[2] - ox ** 2 - oy ** 2)
-    return np.array([[f, 0, ox], [0, f, oy], [0, 0, 1]]), objective(S)
-
-
-def to_world(junctions, juncdepth, lines, K):
+def to_world(junctions, juncdepth, lines, invK):
     vertices = np.c_[junctions, np.ones(len(junctions))]
     vertices *= juncdepth[:, None]
-    vertices = vertices @ LA.inv(K).T
+    vertices = vertices @ invK
     return (
         vertices,
         np.array(
             [
-                [K[0, 0], 0, K[0, 2], 0],
-                [0, K[1, 1], K[1, 2], 0],
-                [0, 0, 0, -1],
+                [1 / invK[0, 0], 0, 0, 0],
+                [0, 1 / invK[1, 1], 0, 0],
+                [0, 0, 0, 0],
                 [0, 0, 1, 0],
             ],
             dtype=np.float32,
@@ -152,15 +126,15 @@ def vanish_point_clustering(junctions, lines):
         if len(clusters) == 0:
             break
 
-    # plt.figure(), plt.tight_layout()
-    # for i, (w, c) in enumerate(vp):
-    #     plt.xlim([-5, 5])
-    #     plt.ylim([-5, 5])
-    #     plt.scatter(w[0] / w[2], w[1] / w[2], c=cmap(i / len(vp)))
-    #     for l in c:
-    #         v1, v2 = junctions[lines[l][0]], junctions[lines[l][1]]
-    #         plt.plot([v1[0], v2[0]], [v1[1], v2[1]], c=cmap(i / len(vp)))
-    # plt.show()
+    plt.figure()
+    for i, (w, c) in enumerate(vp):
+        plt.xlim([-5, 5])
+        plt.ylim([-5, 5])
+        plt.scatter(w[0] / w[2], w[1] / w[2], c=cmap(i / len(vp)))
+        for l in c:
+            v1, v2 = junctions[lines[l][0]], junctions[lines[l][1]]
+            plt.plot([v1[0], v2[0]], [v1[1], v2[1]], c=cmap(i / len(vp)))
+    plt.show()
     return vp
 
 
@@ -182,7 +156,7 @@ def vanish_point_clustering2(junctions, lines):
     normals, weights = np.array(normals), np.array(weights)
     weights /= np.amax(weights)
 
-    candidates = set([i for i in range(len(lines)) if weights[i] > 0.05])
+    candidates = set([i for i in range(len(lines)) if weights[i] > 0.1])
     clusters = []
     for i, j in combinations(candidates, 2):
         w = np.cross(normals[i], normals[j])
@@ -190,7 +164,7 @@ def vanish_point_clustering2(junctions, lines):
             continue
         w /= LA.norm(w)
         line_candidates = set(nearby_lines(w)) & candidates
-        if len(line_candidates) > 3:
+        if len(line_candidates) > 4:
             w = np.zeros(3)
             for p, q in combinations(line_candidates, 2):
                 wp = np.cross(normals[p], normals[q])
@@ -229,14 +203,14 @@ def vanish_point_clustering2(junctions, lines):
     clusters = [clusters[i] for i in range(len(clusters)) if i not in tbd]
 
     print("Len of clusters", len(clusters), clusters)
-    # for i, (w, c) in enumerate(clusters):
-    #     plt.figure()
-    #     plt.xlim([-1, 1])
-    #     plt.ylim([-1, 1])
-    #     plt.scatter(w[0] / w[2], w[1] / w[2], c=cmap(i / len(clusters)))
-    #     for l in c:
-    #         v1, v2 = junctions[lines[l][0]], junctions[lines[l][1]]
-    #         plt.plot([v1[0], v2[0]], [v1[1], v2[1]])
+    for i, (w, c) in enumerate(clusters):
+        plt.figure()
+        plt.xlim([-1, 1])
+        plt.ylim([-1, 1])
+        plt.scatter(w[0] / w[2], w[1] / w[2], c=cmap(i / len(clusters)))
+        for l in c:
+            v1, v2 = junctions[lines[l][0]], junctions[lines[l][1]]
+            plt.plot([v1[0], v2[0]], [v1[1], v2[1]])
 
     W = []
     if len(clusters) < 3:
@@ -253,7 +227,7 @@ def vanish_point_clustering2(junctions, lines):
             K, cost = estimate_intrinsic_from_vp(w1, w2, w3)
             if K is None:
                 continue
-            if 1.8 <= K[0, 0] < 4 and cost < best_cost:
+            if 0.5 <= K[0, 0] < 10 and cost < best_cost:
                 W = [w1, w2, w3]
                 best_cost = cost
                 best_coverage = coverage
@@ -271,107 +245,45 @@ def vanish_point_clustering2(junctions, lines):
         if bestc is not None:
             bestc.add(i)
 
-    # plt.figure(), plt.tight_layout()
-    # for i, (w, c) in enumerate(vp):
-    #     plt.xlim([-1, 1])
-    #     plt.ylim([-1, 1])
-    #     plt.scatter(w[0] / w[2], w[1] / w[2], c=cmap(i / len(vp)))
-    #     for l in c:
-    #         v1, v2 = junctions[lines[l][0]], junctions[lines[l][1]]
-    #         plt.plot([v1[0], v2[0]], [v1[1], v2[1]], c=cmap(i / len(vp)))
-    # plt.show()
+    plt.figure()
+    for i, (w, c) in enumerate(vp):
+        plt.xlim([-1, 1])
+        plt.ylim([-1, 1])
+        plt.scatter(w[0] / w[2], w[1] / w[2], c=cmap(i / len(vp)))
+        for l in c:
+            v1, v2 = junctions[lines[l][0]], junctions[lines[l][1]]
+            plt.plot([v1[0], v2[0]], [v1[1], v2[1]], c=cmap(i / len(vp)))
+    plt.show()
 
     return vp
 
 
-def vanish_point_refine(junctions, lines, vps, blacklist=[], total_iter=4, plot=False):
-    vps = vps[:, :2] / vps[:, 2:]
-    assignment = [[], [], []]
-
-    for niter in range(total_iter):
-        for i in range(3):
-            if len(assignment[i]) <= 1:
-                continue
-            assignment[i].sort(key=lambda x: x[1])
-            c = assignment[i][: math.ceil(len(assignment[i]) * 0.6)]
-            c = [i for i, score in c]
-            x1, y1 = junctions[lines[c, 0], :].T
-            x2, y2 = junctions[lines[c, 1], :].T
-            vps[i] = vp_from_lines(x1, y1, x2, y2)
-
-        assignment = [[], [], []]
-        for i, (a, b) in enumerate(lines):
-            if i in blacklist:
-                continue
-            bestd = 1e100
-            v = junctions[a] - junctions[b]
-            for j in range(3):
-                dist = abs(np.cross(v, vps[j] - junctions[b]))
-                if dist < bestd:
-                    bestd = dist
-                    bestv = v
-                    bestj = j
-            assignment[bestj].append((i, bestd / LA.norm(bestv)))
-
-    if plot:
-        plt.figure(), plt.tight_layout()
-        for i, (c, vp) in enumerate(zip(assignment, vps)):
-            plt.xlim([-1, 1])
-            plt.ylim([-1, 1])
-            plt.scatter(vp[0], vp[1], c=cmap(i / len(vp)))
-            for l, _ in c:
-                v1, v2 = junctions[lines[l][0]], junctions[lines[l][1]]
-                plt.plot([v1[0], v2[0]], [v1[1], v2[1]], c=cmap(i / len(vp)))
-        plt.show()
-    vps = np.c_[vps, np.ones(3)]
-
-    for i in range(3):
-        vps[i] /= LA.norm(vps[i])
-    return [(vps[i], [i for i, score in assignment[i]]) for i in range(3)]
-
-
-def lifting_from_vp(vp, invK, junctions, juncdepth, junctypes, lines, lambda_=0.01):
+def lifting_from_vp(vp, invK, junctions, juncdepth, junctypes, lines, lambda_=2e0):
     vertices = np.c_[junctions, np.ones(len(junctions))] @ invK.T
 
-    assert len(junctions) == len(junctypes)
+    def objective(depth):
+        o = 0
+        for w, c in vp:
+            w = invK @ w
+            w /= LA.norm(w)
+            for l in c:
+                i, j = lines[l]
+                uv = depth[i] * vertices[i] - depth[j] * vertices[j]
+                o += LA.norm(uv - (uv @ w) * w)
+        return o
 
-    T = {}
-    for i, (junc, typ) in enumerate(zip(junctions, junctypes)):
-        if typ != 1:
-            continue
-        bestd = 1e9
-        for j, (a, b) in enumerate(lines):
-            if i in (a, b):
-                continue
-            ja, jb = junctions[a], junctions[b]
-            vec = jb - ja
-            u = (junc - ja) @ vec / (vec @ vec)
-            if 1e-2 < u < 1 - 1e-2:
-                d = LA.norm(ja + u * vec - junc)
-                if d < bestd:
-                    bestd = d
-                    bestj = j
-                    bestu = u
-        if bestd < 1e9:
-            T[i] = (bestj, bestu)
-
-    # for a, b in lines:
-    #     ja, jb = junctions[a], junctions[b]
-    #     plt.plot([ja[0], jb[0]], [ja[1], jb[1]], color="green", zorder=0)
-    # for i, (j, _) in T.items():
-    #     plt.scatter(junctions[i][0], junctions[i][1], color="blue")
-    #     ja, jb = junctions[lines[j][0]], junctions[lines[j][1]]
-    #     plt.plot([ja[0], jb[0]], [ja[1], jb[1]], color="blue", zorder=10)
-    # plt.show()
+    def cross(a, b):
+        return [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
 
     def make_cvx_problem():
         depth = cvx.Variable(len(juncdepth))
         scale = cvx.Variable()
         objective = 0
-        constraints = [depth >= 1, scale >= 0]
-        for iw, (iline, u) in T.items():
-            iu, iv = lines[iline]
-            constraints.append(depth[iw] >= (1 - u) * depth[iu] + u * depth[iv])
+        constraints = [depth >= 0.1, scale >= 0]
         for w, c in vp:
             w = invK @ w
             w /= LA.norm(w)
@@ -379,23 +291,12 @@ def lifting_from_vp(vp, invK, junctions, juncdepth, junctypes, lines, lambda_=0.
                 i, j = lines[l]
                 uv = depth[i] * vertices[i] - depth[j] * vertices[j]
                 objective += cvx.norm(cvx.hstack(cross(uv, w)))
-        for i in range(len(juncdepth)):
-            if juncdepth[i] is None or juncdepth[i] == 0:
-                continue
-            objective += lambda_ * cvx.square(depth[i] - scale * juncdepth[i])
+        objective += lambda_ * cvx.sum_squares(depth - scale * juncdepth)
         problem = cvx.Problem(cvx.Minimize(objective), constraints)
         return problem, depth, scale
 
     problem, depth, scale = make_cvx_problem()
-    problem.solve()
-    # problem.solve(solver="SCS")
+    problem.solve(solver="SCS")
 
+    print(scale.value, 1 / invK[0, 0])
     return depth.value / scale.value
-
-
-def cross(a, b):
-    return [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    ]

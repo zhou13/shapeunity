@@ -94,6 +94,42 @@ class Hourglass(nn.Module):
         return self._hour_glass_forward(self.depth, x)
 
 
+class SubHead(nn.Module):
+    def __init__(self, input_channels, num_classes):
+        super(SubHead, self).__init__()
+        output_channels = int(input_channels / 4)
+        self.jc_cls_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.jc_cls_head = nn.Conv2d(output_channels, 2, kernel_size=1)
+        self.jd_cls_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.jd_cls_head = nn.Conv2d(output_channels, 2, kernel_size=1)
+        self.line_reg_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.line_reg_head = nn.Conv2d(output_channels, 1, kernel_size=1)
+        self.j_reg_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.j_reg_head = nn.Conv2d(output_channels, 4, kernel_size=1)
+        self.ltheta_reg_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.ltheta_reg_head = nn.Conv2d(output_channels, 1, kernel_size=1)
+        self.depth_reg_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.depth_reg_head = nn.Conv2d(output_channels, 2, kernel_size=1)
+        self.jdep_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.jdep_head = nn.Conv2d(output_channels, 1, kernel_size=1)
+        self.ymap_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.ymap_head = nn.Conv2d(output_channels, 3, kernel_size=1)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        jc_cls_head = self.jc_cls_head(self.relu(self.jc_cls_feat(x)))
+        jd_cls_head = self.jd_cls_head(self.relu(self.jd_cls_feat(x)))
+        line_reg_head = self.line_reg_head(self.relu(self.line_reg_feat(x)))
+        j_reg_head = self.j_reg_head(self.relu(self.j_reg_feat(x)))
+        ltheta_reg_head = self.ltheta_reg_head(self.relu(self.ltheta_reg_feat(x)))
+        depth_reg_head = self.depth_reg_head(self.relu(self.depth_reg_feat(x)))
+        jdep_head = self.jdep_head(self.relu(self.jdep_feat(x)))
+        ymap_head = self.ymap_head(self.relu(self.ymap_feat(x)))
+        out = torch.cat([jc_cls_head, jd_cls_head, line_reg_head, j_reg_head, ltheta_reg_head,
+                         depth_reg_head, jdep_head, ymap_head], 1)
+        return out
+
+
 class HourglassNet(nn.Module):
     """Hourglass model from Newell et al ECCV 2016"""
 
@@ -113,13 +149,16 @@ class HourglassNet(nn.Module):
 
         # build hourglass modules
         ch = self.num_feats * block.expansion
-        hg, res, fc, score, fc_, score_ = [], [], [], [], [], []
+        hg, res, fc, score, vpts, fc_, score_ = [], [], [], [], [], [], []
         for i in range(num_stacks):
             hg.append(Hourglass(block, num_blocks, self.num_feats, depth))
             res.append(self._make_residual(block, self.num_feats, num_blocks))
             fc.append(self._make_fc(ch, ch))
-            score.append(nn.Conv2d(ch, num_classes, kernel_size=1))
-
+            score.append(SubHead(ch, num_classes))
+            vpts.append(nn.Linear(ch, 9))
+            # score.append(nn.Conv2d(ch, num_classes, kernel_size=1))
+            # score[i].bias.data[0] += 4.6
+            # score[i].bias.data[2] += 4.6
             if i < num_stacks - 1:
                 fc_.append(nn.Conv2d(ch, ch, kernel_size=1))
                 score_.append(nn.Conv2d(num_classes, ch, kernel_size=1))
@@ -127,6 +166,7 @@ class HourglassNet(nn.Module):
         self.res = nn.ModuleList(res)
         self.fc = nn.ModuleList(fc)
         self.score = nn.ModuleList(score)
+        self.vpts = nn.ModuleList(vpts)
         self.fc_ = nn.ModuleList(fc_)
         self.score_ = nn.ModuleList(score_)
 
@@ -157,6 +197,7 @@ class HourglassNet(nn.Module):
 
     def forward(self, x):
         out = []
+        out_vps = []
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
@@ -171,13 +212,17 @@ class HourglassNet(nn.Module):
             y = self.res[i](y)
             y = self.fc[i](y)
             score = self.score[i](y)
+            pre_vpts = F.adaptive_avg_pool2d(x, (1, 1))
+            pre_vpts = pre_vpts.reshape(-1, 256)
+            vpts = self.vpts[i](pre_vpts)
             out.append(score)
+            out_vps.append(vpts)
             if i < self.num_stacks - 1:
                 fc_ = self.fc_[i](y)
                 score_ = self.score_[i](score)
                 x = x + fc_ + score_
 
-        return out[::-1]
+        return out[::-1], out_vps[::-1]
 
 
 def hg(**kwargs):

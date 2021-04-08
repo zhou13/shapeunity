@@ -74,9 +74,9 @@ def parmap(f, X, nprocs=multiprocessing.cpu_count(), progress_bar=lambda x: x):
         p.start()
 
     try:
-        sent = [q_in.put((i, x)) for i, x in enumerate(progress_bar(list(X)))]
+        sent = [q_in.put((i, x)) for i, x in enumerate(X)]
         [q_in.put((None, None)) for _ in range(nprocs)]
-        res = [q_out.get() for _ in range(len(sent))]
+        res = [q_out.get() for _ in progress_bar(range(len(sent)))]
         [p.join() for p in proc]
     except KeyboardInterrupt:
         q_in.close()

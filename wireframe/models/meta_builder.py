@@ -30,7 +30,7 @@ class MetaBuilder:
         print("Using pretrained weights: {}".format(pretrained))
         if arch == "resnet18":
             orig_resnet = get_resnet50(pretrained=pretrained)
-            net_encoder = ResNet(orig_resnet)
+            net_encoder = ResNet(orig_resnet, dilate_scale=16)
         else:
             raise NotImplementedError
 

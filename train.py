@@ -8,8 +8,6 @@ Options:
    -h --help                         Show this screen.
    -d --devices <devices>            Comma seperated GPU devices [default: 0]
    -i --identifier <identifier>      Folder name
-   --from <checkpoint>               Load a checkpoint before evaluation
-   --eval                            Evaluate instead of training
 """
 
 import os
@@ -26,6 +24,7 @@ import pprint
 import yaml
 import numpy as np
 import torch
+import torchvision
 from torch import nn
 from docopt import docopt
 
@@ -74,8 +73,8 @@ def main():
     config_file = args["<yaml-config>"] or "config/hourglass.yaml"
     with open(config_file, "r") as f:
         c = yaml.load(f)
+        resume_from = c["io"]["resume_from"]
         pprint.pprint(c, indent=4)
-    resume_from = args["--from"]
 
     random.seed(0)
     np.random.seed(0)
@@ -121,7 +120,7 @@ def main():
     # print("epoch_size (valid):", len(val_loader))
 
     if resume_from:
-        checkpoint = torch.load(resume_from)
+        checkpoint = torch.load(osp.join(resume_from, "checkpoint.pth.tar"))
 
     # 2. model
     num_class = MultitaskLearner.NUM_CLASS
@@ -143,13 +142,13 @@ def main():
     model = MultitaskLearner(model)
     model.num_stacks = 1
 
+    if resume_from:
+        model.load_state_dict(checkpoint["model_state_dict"])
     model = model.to(device)
     model = torch.nn.DataParallel(
         model, device_ids=list(range(args["--devices"].count(",") + 1))
     )
     model.num_stacks = model.module.num_stacks
-    if resume_from:
-        model.load_state_dict(checkpoint["model_state_dict"])
 
     # 3. optimizer
     if c["optim"]["name"] == "Adam":
@@ -171,7 +170,7 @@ def main():
 
     if resume_from:
         optim.load_state_dict(checkpoint["optim_state_dict"])
-    outdir = get_outdir(c, args["--identifier"])
+    outdir = resume_from or get_outdir(c, args["--identifier"])
     print("outdir:", outdir)
 
     trainer = wireframe.trainer.Trainer(
@@ -185,6 +184,7 @@ def main():
         batch_size=c["model"]["batch_size"],
         checkpoint_interval=c["io"]["checkpoint_interval"],
         validation_interval=c["io"]["validation_interval"],
+        tb_port=c["io"]["tensorboard_port"],
     )
     if resume_from:
         trainer.iteration = checkpoint["iteration"]
@@ -194,10 +194,8 @@ def main():
         trainer.best_mean_loss = checkpoint["best_mean_loss"]
         del checkpoint
 
-    if args["--eval"]:
-        trainer.validate()
-    else:
-        trainer.train()
+    trainer.train()
+    # trainer.test(args["<image-path>"])
 
 
 if __name__ == "__main__":

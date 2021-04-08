@@ -93,6 +93,36 @@ class ResNet(nn.Module):
         return [x]
 
 
+class SubHead(nn.Module):
+    def __init__(self, input_channels):
+        super(SubHead, self).__init__()
+        output_channels = int(input_channels / 4)
+        self.jc_cls_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.jc_cls_head = nn.Conv2d(output_channels, 2, kernel_size=1)
+        self.jd_cls_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.jd_cls_head = nn.Conv2d(output_channels, 2, kernel_size=1)
+        self.line_reg_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.line_reg_head = nn.Conv2d(output_channels, 1, kernel_size=1)
+        self.j_reg_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.j_reg_head = nn.Conv2d(output_channels, 4, kernel_size=1)
+        self.ltheta_reg_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.ltheta_reg_head = nn.Conv2d(output_channels, 1, kernel_size=1)
+        self.depth_reg_feat = nn.Conv2d(input_channels, output_channels, kernel_size=3, padding=1)
+        self.depth_reg_head = nn.Conv2d(output_channels, 3, kernel_size=1)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        jc_cls_head = self.jc_cls_head(self.relu(self.jc_cls_feat(x)))
+        jd_cls_head = self.jd_cls_head(self.relu(self.jd_cls_feat(x)))
+        line_reg_head = self.line_reg_head(self.relu(self.line_reg_feat(x)))
+        j_reg_head = self.j_reg_head(self.relu(self.j_reg_feat(x)))
+        ltheta_reg_head = self.ltheta_reg_head(self.relu(self.ltheta_reg_feat(x)))
+        depth_reg_head = self.depth_reg_head(self.relu(self.depth_reg_feat(x)))
+        out = torch.cat([jc_cls_head, jd_cls_head, line_reg_head,
+                         j_reg_head, ltheta_reg_head, depth_reg_head], 1)
+        return out
+    
+    
 class UPerNet(nn.Module):
     def __init__(
         self,
@@ -142,8 +172,9 @@ class UPerNet(nn.Module):
 
         self.conv_last = nn.Sequential(
             conv3x3_bn_relu(len(fpn_inplanes) * fpn_dim, fpn_dim, 1),
-            nn.Conv2d(fpn_dim, num_class, kernel_size=1),
+            # nn.Conv2d(fpn_dim, num_class, kernel_size=1),
         )
+        self.conv_last_last = SubHead(fpn_dim)
 
     def forward(self, conv_out):
         conv5 = conv_out[-1]
@@ -190,5 +221,5 @@ class UPerNet(nn.Module):
             )
         fusion_out = torch.cat(fusion_list, 1)
         x = self.conv_last(fusion_out)
-
+        x = self.conv_last_last(x)
         return x

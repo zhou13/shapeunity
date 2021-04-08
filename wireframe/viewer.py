@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import os
 import sys
 import json
 import math
@@ -16,7 +15,6 @@ from vispy.gloo.util import _screenshot
 from vispy.util.transforms import rotate, translate
 
 app.use_app("pyqt5")
-PI2 = math.pi * 2
 
 VERTEX = """
 attribute vec3 vertex;
@@ -24,47 +22,37 @@ attribute vec3 vertex;
 uniform mat4 proj;
 uniform mat4 view;
 uniform mat4 rotation;
-uniform float dmin;
-uniform float dmax;
-
-varying float depth;
 
 void main()
 {
-    vec4 rotated = rotation * vec4(vertex, 1);
-    vec4 pos = proj * view * rotated;
-    depth = (rotated.z / rotated.w - dmin) / (dmax - dmin);
-    pos.z /= 100;
+    vec4 pos = proj * view * rotation * vec4(vertex, 1);
+    pos.z /= 10;
     gl_Position = pos;
 }
 """
 
 FRAGMENT = """
-varying float depth;
-
 float colormap_red(float x) {
-    if (x < 0.75) {
-        return 8.0 / 9.0 * x - (13.0 + 8.0 / 9.0) / 1000.0;
+    if (x < 0.5) {
+        return -6.0 * x + 67.0 / 32.0;
     } else {
-        return (13.0 + 8.0 / 9.0) / 10.0 * x - (3.0 + 8.0 / 9.0) / 10.0;
+        return 6.0 * x - 79.0 / 16.0;
     }
 }
 
 float colormap_green(float x) {
-    if (x <= 0.375) {
-        return 8.0 / 9.0 * x - (13.0 + 8.0 / 9.0) / 1000.0;
-    } else if (x <= 0.75) {
-        return (1.0 + 2.0 / 9.0) * x - (13.0 + 8.0 / 9.0) / 100.0;
+    if (x < 0.4) {
+        return 6.0 * x - 3.0 / 32.0;
     } else {
-        return 8.0 / 9.0 * x + 1.0 / 9.0;
+        return -6.0 * x + 79.0 / 16.0;
     }
 }
 
 float colormap_blue(float x) {
-    if (x <= 0.375) {
-        return (1.0 + 2.0 / 9.0) * x - (13.0 + 8.0 / 9.0) / 1000.0;
+    if (x < 0.7) {
+       return 6.0 * x - 67.0 / 32.0;
     } else {
-        return 8.0 / 9.0 * x + 1.0 / 9.0;
+       return -6.0 * x + 195.0 / 32.0;
     }
 }
 
@@ -76,7 +64,7 @@ vec4 colormap(float x) {
 }
 
 void main() {
-    gl_FragColor = colormap(depth);
+    gl_FragColor = colormap(gl_FragCoord.w);
 }
 """
 
@@ -96,11 +84,11 @@ class Canvas(app.Canvas):
         self.program["proj"] = proj_matrix.T.astype(np.float32)
         self.index_buffer = gloo.IndexBuffer(lines.astype(np.uint32))
         self.fbo = gloo.FrameBuffer(
-            gloo.Texture2D(shape=(2048, 2048, 3)),
-            gloo.RenderBuffer((2048, 2048), format="depth"),
+            gloo.Texture2D(shape=self.size + (4,)),
+            gloo.RenderBuffer(self.size, format="depth"),
         )
 
-        self.vertices = np.c_[vertices, np.ones(len(vertices))]
+        gloo.set_line_width(2)
         gloo.set_viewport(0, 0, self.size[0], self.size[1])
         self.alpha = 0
         self.theta = 0
@@ -111,76 +99,36 @@ class Canvas(app.Canvas):
         rotation_matrix = rotate(self.alpha, [0, 1, 0]) @ rotate(self.theta, [1, 0, 0])
         self.program["rotation"] = rotation_matrix
         self.program["view"] = self.view
-        depth = (self.vertices @ rotation_matrix)[:, 2]
-        self.program["dmin"] = np.min(depth)
-        self.program["dmax"] = np.max(depth)
         self.update()
 
     def on_draw(self, event):
-        gloo.set_line_width(13)
-        gloo.set_viewport(0, 0, self.size[0], self.size[1])
-        gloo.set_state(blend=True, depth_test=True)
-        gloo.clear(color="white", depth=True)
+        gloo.clear(color="black")
         self.program.draw("lines", self.index_buffer)
+        # gloo.set_state(blend=True, depth_test=True, polygon_offset_fill=True)
 
     def on_resize(self, event):
         gloo.set_viewport(0, 0, self.size[0], self.size[1])
 
     def on_mouse_wheel(self, event):
-        self.view = self.view @ translate((0, 0, -0.005 * event.delta[1]))
+        self.view = self.view @ translate((0, 0, -0.2 * event.delta[1]))
         self.update_matrix()
 
     def on_key_press(self, event):
         # modifiers = [key.name for key in event.modifiers]
         if event.text == "S":
             self.screenshot()
-        elif event.text == "A":
-            self.videotape()
 
-    def screenshot(self, linewidth=26, start=0):
+    def screenshot(self):
         with self.fbo:
-            gloo.set_line_width(linewidth)
-            gloo.set_viewport(0, 0, 2048, 2048)
-            gloo.set_state(blend=True, depth_test=True)
-            gloo.clear(color="white", depth=True)
+            gloo.clear(color="black")
+            gloo.set_viewport(0, 0, self.size[0], self.size[1])
             self.program.draw("lines", self.index_buffer)
-            im = _screenshot((0, 0, 2048, 2048))[:, :, :3]
-        for i in range(start, 9999):
-            if not osp.exists(f"{self.prefix}_s{i:04d}.png"):
-                print(f"Save to {self.prefix}_s{i:04d}.png")
-                cv2.imwrite(f"{self.prefix}_s{i:04d}.png", im[:, :, ::-1])
+            im = _screenshot((0, 0, self.size[0], self.size[1]))[:, :, :3]
+        for i in range(100):
+            if not osp.exists(f"{self.prefix}_s{i:02d}.png"):
+                print(f"Save to {self.prefix}_s{i:02d}.png")
+                cv2.imwrite(f"{self.prefix}_s{i:02d}.png", im[:, :, ::-1])
                 break
-
-    def videotape(self):
-        oldprefix = self.prefix
-        os.makedirs(self.prefix, exist_ok=True)
-        self.prefix = osp.join(self.prefix, "video")
-        A = np.r_[
-            np.linspace(0, 000, 50),
-            np.linspace(0, 360, 100),
-            np.linspace(0, 0, 20),
-            np.linspace(0, 000, 100),
-            np.linspace(0, 0, 20),
-            np.linspace(0, 360, 100),
-            np.linspace(0, 0, 20),
-            np.linspace(0, 360, 100),
-            np.linspace(0, 0, 20),
-        ]
-        T = np.r_[
-            np.linspace(0, 000, 50),
-            np.linspace(0, 000, 100),
-            np.linspace(0, 0, 20),
-            np.linspace(0, 360, 100),
-            np.linspace(0, 0, 20),
-            np.linspace(0, 360, 100),
-            np.linspace(0, 0, 20),
-            np.linspace(0, -360, 100),
-            np.linspace(0, 0, 20),
-        ]
-        for i, (self.alpha, self.theta) in enumerate(zip(A, T)):
-            self.update_matrix()
-            self.screenshot(linewidth=40)
-        self.prefix = oldprefix
 
     def on_mouse_move(self, event):
         if event.button == 1 and event.last_event is not None:
@@ -198,17 +146,16 @@ class Canvas(app.Canvas):
             x0, y0 = event.last_event.pos
             x1, y1 = event.pos
             self.view = self.view @ translate(
-                (0.001 * (x1 - x0), 0.001 * (y0 - y1), 0.0)
+                (0.003 * (x1 - x0), 0.003 * (y0 - y1), 0.0)
             )
             self.update_matrix()
 
 
 def show_wireframe(prefix, vertices, lines, projection_matrix=np.eye(4)):
     vertices = vertices.copy()
-    d = np.average(vertices, axis=0)
-    vertices -= d
-    view_matrix = translate(tuple(d))
-    print(projection_matrix)
+    d = np.average(vertices[:, 2])
+    vertices[:, 2] -= d
+    view_matrix = translate((0, 0, d))
     c = Canvas(  # noqa
         prefix,
         np.array(vertices, dtype=np.float32),
