@@ -258,6 +258,7 @@ def extract_wireframe(prefix, image, result, plot=True, imshow=True):
         # for i in ijund:
         #     plt.scatter(jun[i][0] / 4, jun[i][1] / 4, color="blue", zorder=100)
         plt.savefig(f"{prefix}_map.svg", bbox_inches=0)
+        plt.close()
 
         # plt.figure(), plt.title("Initial Wireframe"), plt.tight_layout()
         # plt.imshow(image), plt.colorbar(sm, fraction=0.046)
@@ -356,7 +357,7 @@ def extract_wireframe(prefix, image, result, plot=True, imshow=True):
         index += 1
     lines = [[new_index[i], new_index[j]] for *_, i, j in edges]
 
-    return np.array(junctions), np.array(junctypes), np.array(juncdepth), lines
+    return np.array(junctions), np.array(junctypes), np.array(juncdepth), lines, edges
 
 
 def main():
@@ -404,7 +405,7 @@ def main():
         plt.close()
 
         os.makedirs(f"{npzdir}/wireframe", exist_ok=True)
-        junctions, junctypes, juncdepth, lines = extract_wireframe(
+        junctions, junctypes, juncdepth, lines, _ = extract_wireframe(
             f"{npzdir}/wireframe/{index:06}",
             image,
             result,

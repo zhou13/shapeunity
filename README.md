@@ -110,6 +110,20 @@ python vectorize_u3d.py logs/pretrained-wireframe/npz/003576000 --vpdir logs/pre
 python vectorize_u3d.py logs/pretrained-wireframe/npz/003576000 --vpdir logs/pretrained-vanishing-points/npz/000096000 299
 ```
 
+### Evaluation
+
+To quantitative evaluate the working examples of Shapeunity, excute the following commands:
+
+``` bash
+python eval_2d3d_metric.py logs/pretrained-wireframe/npz/003576000 --vpdir logs/pretrained-vanishing-points/npz/000096000 57
+```
+you can evaluate one sample as above (e.g the 57-th sample) or the whole evaluation set as below:
+``` bash
+python eval_2d3d_metric.py logs/pretrained-wireframe/npz/003576000 --vpdir logs/pretrained-vanishing-points/npz/000096000
+```
+
+They will output one 2D sAP-10 metric which detail can be found in paper [LCNN](https://openaccess.thecvf.com/content_ICCV_2019/papers/Zhou_End-to-End_Wireframe_Parsing_ICCV_2019_paper.pdf) 
+and one 3D metric which based on sAP-10 and add the constrain of 3D angle between the predict 3D line and ground truth 3D line. 
 
 ## Acknowledgement
 
