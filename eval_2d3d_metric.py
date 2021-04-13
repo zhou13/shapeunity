@@ -7,7 +7,6 @@ Usage:
 Options:
    -h --help                 Show this screen.
    --show                    Show the result on screen
-   -j --jobs <jobs>          Number of threads for vectorization [default: 1]
    --vpdir <vpdir>           Directory to the vanishing points prediction
                              [Default: logs/pretrained-vanishing-points/npz/000096000]
 """
@@ -199,52 +198,45 @@ def main():
     threshold_2d = 10
     threshold_3d = 10
 
-    print(indices)
-
     with open(f"{npzdir}/../../config.yaml", "r") as f:
-        c = yaml.load(f)
+        c = yaml.load(f, Loader=yaml.FullLoader)
     datadir = c["io"]["datadir"]
 
-    if int(args["--jobs"]) == 1:
-        n_gt = 0
-        n_pt = 0
-        tps2, fps2, tps3, fps3, scores = [], [], [], [], []
-        for index in map(int, indices):
-            gt_lines, pt_lines, score, gt_3dlines, pt_3dlines = extract(index, datadir, npzdir, args["--vpdir"])
-            n_gt += len(gt_lines)
-            n_pt += len(pt_lines)
-            tp2, fp2, _, tp3, fp3, _ = msTPFP_hit(pt_lines/4, gt_lines/4, pt_3dlines, gt_3dlines, threshold=threshold_2d, theta_t=threshold_3d)
+    n_gt = 0
+    n_pt = 0
+    tps2, fps2, tps3, fps3, scores = [], [], [], [], []
+    for index in map(int, indices):
+        gt_lines, pt_lines, score, gt_3dlines, pt_3dlines = extract(index, datadir, npzdir, args["--vpdir"])
+        n_gt += len(gt_lines)
+        n_pt += len(pt_lines)
+        tp2, fp2, _, tp3, fp3, _ = msTPFP_hit(pt_lines/4, gt_lines/4, pt_3dlines, gt_3dlines, threshold=threshold_2d, theta_t=threshold_3d)
 
-            tps2.append(tp2)
-            fps2.append(fp2)
+        tps2.append(tp2)
+        fps2.append(fp2)
 
-            tps3.append(tp3)
-            fps3.append(fp3)
+        tps3.append(tp3)
+        fps3.append(fp3)
 
-            scores.append(score)
+        scores.append(score)
 
-        tps2 = np.concatenate(tps2)
-        fps2 = np.concatenate(fps2)
+    tps2 = np.concatenate(tps2)
+    fps2 = np.concatenate(fps2)
 
-        tps3 = np.concatenate(tps3)
-        fps3 = np.concatenate(fps3)
+    tps3 = np.concatenate(tps3)
+    fps3 = np.concatenate(fps3)
 
-        scores = np.concatenate(scores)
-        index = np.argsort(-scores)
-        tp_2d = np.cumsum(tps2[index]) / n_gt
-        fp_2d = np.cumsum(fps2[index]) / n_gt
+    scores = np.concatenate(scores)
+    index = np.argsort(-scores)
+    tp_2d = np.cumsum(tps2[index]) / n_gt
+    fp_2d = np.cumsum(fps2[index]) / n_gt
 
-        tp_3d = np.cumsum(tps3[index]) / n_gt
-        fp_3d = np.cumsum(fps3[index]) / n_gt
+    tp_3d = np.cumsum(tps3[index]) / n_gt
+    fp_3d = np.cumsum(fps3[index]) / n_gt
 
-        sap_2d = ap(tp_2d, fp_2d)
-        sap_3d = ap(tp_3d, fp_3d)
+    sap_2d = ap(tp_2d, fp_2d)
+    sap_3d = ap(tp_3d, fp_3d)
 
-        print(f"2D metric sAP-{threshold_2d}: {sap_2d}. \n 3D metric sAP-{threshold_2d}-{threshold_3d}: {sap_3d}. ")
-        with open(f"metric2d3d.csv", "a") as fout:
-            print(f"2D metric sAP-{threshold_2d}: {sap_2d}. \n 3D metric sAP-{threshold_2d}-{threshold_3d}: {sap_3d}. ", file=fout)
-    else:
-        raise ValueError("not implementation")
+    print(f"2D metric sAP-{threshold_2d}: {sap_2d}.")
 
 
 if __name__ == "__main__":

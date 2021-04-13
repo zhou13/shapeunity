@@ -73,7 +73,7 @@ def main():
     args = docopt(__doc__)
     config_file = args["<yaml-config>"] or "config/hourglass.yaml"
     with open(config_file, "r") as f:
-        c = yaml.load(f)
+        c = yaml.load(f, Loader=yaml.FullLoader)
         pprint.pprint(c, indent=4)
     resume_from = args["--from"]
 

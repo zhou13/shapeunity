@@ -1,6 +1,6 @@
 # Learning to Reconstruct 3D Manhattan Wireframes From a Single Image
 
-This repository contains the  PyTorch implementation of the paper:  *[Yichao Zhou](https://yichaozhou.com), [Haozhi Qi](https://haozhi.io/), [Yuexiang Zhai](https://yx-s-z.github.io/), [Qi Sun](https://qisun.me/), [Zhili Chen](http://www.zhilichen.com/), [Li-Yi Wei](https://www.liyiwei.org/), [Yi Ma](https://people.eecs.berkeley.edu/~yima/). "[Learning to Reconstruct 3D Manhattan Wireframes From a Single Image](https://arxiv.org/abs/1905.07482)"*.
+This repository contains the  PyTorch implementation of the paper:  *[Yichao Zhou](https://yichaozhou.com), [Haozhi Qi](https://haozhi.io/), [Yuexiang Zhai](https://yx-s-z.github.io/), [Qi Sun](https://qisun.me/), [Zhili Chen](http://www.zhilichen.com/), [Li-Yi Wei](https://www.liyiwei.org/), [Yi Ma](https://people.eecs.berkeley.edu/~yima/). "[Learning to Reconstruct 3D Manhattan Wireframes From a Single Image](https://arxiv.org/abs/1905.07482)", ICCV 2019*.
 
 ## Introduction
 
@@ -62,7 +62,7 @@ cd ..
 If `gdrive-download.sh` does not work for you, you can download the pre-processed datasets
 manually from our [Google Drive](https://drive.google.com/file/d/1-TABJjT4-_yzE-iRD-n_yIJ9Kwzzkm7X) and proceed accordingly.
 
-### Pre-trained Models
+### Downloading the Pre-trained Models
 
 Execute the following command to download and unzip the pre-trained models.
 
@@ -72,6 +72,7 @@ cd logs
 ../misc/gdrive-download.sh 1YwPMbAHnxSA3BgiM5Q26mKSTjd46OYRo pretrained-vanishing-points.zip
 unzip pretrained-wireframe.zip
 unzip pretrained-vanishing-points.zip
+rm *.zip
 cd ..
 ```
 
@@ -110,24 +111,20 @@ python vectorize_u3d.py logs/pretrained-wireframe/npz/003576000 --vpdir logs/pre
 python vectorize_u3d.py logs/pretrained-wireframe/npz/003576000 --vpdir logs/pretrained-vanishing-points/npz/000096000 299
 ```
 
-### Evaluation
+### Evaluation (Optional)
 
-To quantitative evaluate the working examples of Shapeunity, excute the following commands:
+To quantitatively evaluate the wireframe quality of ShapeUnity, execute the following command:
 
-``` bash
-python eval_2d3d_metric.py logs/pretrained-wireframe/npz/003576000 --vpdir logs/pretrained-vanishing-points/npz/000096000 57
-```
-you can evaluate one sample as above (e.g the 57-th sample) or the whole evaluation set as below:
 ``` bash
 python eval_2d3d_metric.py logs/pretrained-wireframe/npz/003576000 --vpdir logs/pretrained-vanishing-points/npz/000096000
 ```
 
-They will output one 2D sAP-10 metric which detail can be found in paper [LCNN](https://openaccess.thecvf.com/content_ICCV_2019/papers/Zhou_End-to-End_Wireframe_Parsing_ICCV_2019_paper.pdf) 
-and one 3D metric which based on sAP-10 and add the constrain of 3D angle between the predict 3D line and ground truth 3D line. 
+The details of the sAP-10 metric can be found in the paper [LCNN](https://openaccess.thecvf.com/content_ICCV_2019/papers/Zhou_End-to-End_Wireframe_Parsing_ICCV_2019_paper.pdf).
 
 ## Acknowledgement
 
-This work is supported by a research grant from Sony Research.
+This work is supported by a research grant from Sony Research.  We thank Xili Dai for providing the
+sAP evaluation script for the project.
 
 ## Citing ShapeUnity
 

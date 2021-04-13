@@ -365,7 +365,7 @@ def main():
     npzdir = args["<npzdir>"]
     indices = args["<indices>"] or [101]
     with open(f"{npzdir}/../../config.yaml", "r") as f:
-        c = yaml.load(f)
+        c = yaml.load(f, Loader=yaml.FullLoader)
     datadir = c["io"]["datadir"]
 
     def extract(index):
