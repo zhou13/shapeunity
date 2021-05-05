@@ -59,7 +59,7 @@ rm *.zip
 cd ..
 ```
 
-If `gdrive-download.sh` does not work for you, you can download the pre-processed datasets
+**Note: If your downloaded zip file is corrupted, it is likely due to the restriction on the amount of data that can be downloaded from my account per day.** In that case, you can try to download the pre-processed dataset
 manually from our [Google Drive](https://drive.google.com/file/d/1-TABJjT4-_yzE-iRD-n_yIJ9Kwzzkm7X) and proceed accordingly.
 
 ### Downloading the Pre-trained Models
